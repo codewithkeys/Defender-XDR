@@ -1,0 +1,394 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Defender XDR Attack Chain</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: SOC-console walkthrough — control header, tactic rail, live narration, 8 stage cards beside an incident log, then the XDR response row and product sensors. */
+:root{
+  --bg:#eef3f8; --surface:#ffffff; --surface-2:#f6f9fc; --ink:#0c1b2e; --muted:#5a6a7e; --line:#d5dfea;
+  --defend:#1d66c9; --defend-soft:#e2edfb; --threat:#cf3f37; --threat-soft:#fbe6e4; --ok:#1c8656; --ok-soft:#e1f3ea;
+  --display:"Sora","Segoe UI",system-ui,sans-serif; --body:"IBM Plex Sans","Segoe UI",system-ui,sans-serif; --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  --r:10px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#07101b; --surface:#0d1a2a; --surface-2:#0a1522; --ink:#e4edf7; --muted:#8a9cb2; --line:#1d2f45;
+  --defend:#5ea3ff; --defend-soft:#11284a; --threat:#ff6d61; --threat-soft:#36151a; --ok:#3fca8b; --ok-soft:#0f2e22; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#07101b; --surface:#0d1a2a; --surface-2:#0a1522; --ink:#e4edf7; --muted:#8a9cb2; --line:#1d2f45;
+  --defend:#5ea3ff; --defend-soft:#11284a; --threat:#ff6d61; --threat-soft:#36151a; --ok:#3fca8b; --ok-soft:#0f2e22; color-scheme:dark}
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.5}
+.wrap{max-width:1260px;margin:0 auto;padding-block:28px 40px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:20px}
+
+header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:16px}
+.eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--defend)}
+h1{font-family:var(--display);font-weight:700;font-size:clamp(26px,3.4vw,38px);line-height:1.1;margin:4px 0 6px;text-wrap:balance;letter-spacing:-.01em}
+.sub{color:var(--muted);margin:0;max-width:62ch}
+.controls{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.btn{appearance:none;border:1px solid var(--line);background:var(--surface);color:var(--ink);height:40px;min-width:40px;padding:0 12px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;gap:6px;font:500 14px var(--body);cursor:pointer}
+.btn:hover{border-color:var(--defend)}
+.btn:focus-visible,.stage:focus-visible{outline:2px solid var(--defend);outline-offset:2px}
+.btn.primary{background:var(--defend);border-color:var(--defend);color:var(--surface);min-width:96px}
+.btn svg{width:16px;height:16px}
+.btn .speed{font-family:var(--mono)}
+
+/* Tactic rail */
+.rail{position:relative;display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:4px}
+.seg{display:flex;flex-direction:column;gap:6px;min-width:0;cursor:pointer}
+.seg .bar{height:6px;border-radius:3px;background:var(--line);overflow:hidden;position:relative}
+.seg .bar::after{content:"";position:absolute;inset:0;width:0;background:var(--defend);transition:width .5s ease}
+.seg[data-state="attack"] .bar::after{width:55%;background:var(--threat)}
+.seg[data-state="detect"] .bar::after,.seg[data-state="done"] .bar::after{width:100%}
+.seg span{font-family:var(--mono);font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.seg[data-state="attack"] span{color:var(--threat)}
+.seg[data-state="detect"] span,.seg[data-state="done"] span{color:var(--ink)}
+
+/* Narration */
+.now{display:grid;grid-template-columns:auto minmax(0,1fr);gap:16px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px 18px;transition:border-color .3s}
+.now[data-tone="threat"]{border-color:var(--threat)}
+.now[data-tone="defend"]{border-color:var(--defend)}
+.now[data-tone="ok"]{border-color:var(--ok)}
+.now .badge{width:46px;height:46px;border-radius:50%;display:grid;place-items:center;font-family:var(--display);font-weight:700;font-size:18px;background:var(--defend-soft);color:var(--defend)}
+.now[data-tone="threat"] .badge{background:var(--threat-soft);color:var(--threat)}
+.now[data-tone="ok"] .badge{background:var(--ok-soft);color:var(--ok)}
+.now .k{font-family:var(--mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.now .t{font-family:var(--display);font-weight:600;font-size:18px;margin:2px 0}
+.now .d{margin:0;color:var(--ink)}
+.now .d b{font-weight:600}
+.now[data-tone="threat"] .d b{color:var(--threat)}
+.now[data-tone="defend"] .d b{color:var(--defend)}
+.now[data-tone="ok"] .d b{color:var(--ok)}
+
+/* Main grid */
+.main{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:20px;align-items:start}
+.stages{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.stage{position:relative;overflow:hidden;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px;display:flex;flex-direction:column;gap:8px;cursor:pointer;transition:border-color .3s,background .3s,transform .3s;min-width:0}
+.stage .top{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.ico{width:42px;height:42px;border-radius:10px;display:grid;place-items:center;background:var(--surface-2);color:var(--muted);position:relative;transition:color .3s,background .3s}
+.ico svg{width:24px;height:24px}
+.num{font-family:var(--display);font-weight:700;font-size:13px;color:var(--muted)}
+.pill{font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;padding:3px 7px;border-radius:999px;background:var(--surface-2);color:var(--muted);white-space:nowrap}
+.stage h3{font-family:var(--display);font-weight:600;font-size:15.5px;margin:0;line-height:1.25}
+.tactic{font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:.03em}
+.stage p{margin:0;font-size:13.5px;color:var(--muted);line-height:1.45}
+.sensors{margin-top:auto;padding-top:6px;display:flex;flex-wrap:wrap;gap:4px}
+.chip{font-size:11.5px;font-weight:500;padding:3px 8px;border-radius:6px;border:1px solid var(--line);color:var(--muted);display:inline-flex;align-items:center;gap:5px;transition:all .3s}
+.chip svg{width:12px;height:12px}
+
+.stage[data-state="attack"]{border-color:var(--threat);background:var(--threat-soft);transform:translateY(-2px)}
+.stage[data-state="attack"] .ico{color:var(--threat);background:var(--surface)}
+.stage[data-state="attack"] .ico::after{content:"";position:absolute;inset:-4px;border-radius:13px;border:2px solid var(--threat);animation:ring 1.1s ease-out infinite}
+.stage[data-state="attack"] .pill{background:var(--threat);color:var(--surface)}
+.stage[data-state="attack"] .num{color:var(--threat)}
+.stage[data-state="detect"]{border-color:var(--defend);background:var(--defend-soft);transform:translateY(-2px)}
+.stage[data-state="detect"]::after{content:"";position:absolute;top:0;bottom:0;width:40%;left:-40%;background:linear-gradient(90deg,transparent,var(--defend),transparent);opacity:.18;animation:sweep 1.1s ease-out 1}
+.stage[data-state="detect"] .ico,.stage[data-state="done"] .ico{color:var(--defend);background:var(--surface)}
+.stage[data-state="detect"] .pill{background:var(--defend);color:var(--surface)}
+.stage[data-state="detect"] .chip,.stage[data-state="done"] .chip{border-color:var(--defend);color:var(--defend);background:var(--surface)}
+.stage[data-state="detect"] .chip{animation:pop .5s ease-out}
+.stage[data-state="done"] .pill{background:var(--defend-soft);color:var(--defend)}
+.stage[data-state="done"] .num{color:var(--defend)}
+
+@keyframes ring{from{opacity:.9;transform:scale(.92)}to{opacity:0;transform:scale(1.25)}}
+@keyframes sweep{to{left:100%}}
+@keyframes pop{0%{transform:scale(.9)}60%{transform:scale(1.06)}100%{transform:scale(1)}}
+@keyframes slide{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+/* Incident log */
+.log{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);display:flex;flex-direction:column;min-width:0;height:100%;max-height:560px}
+.log-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px;padding:12px 14px;border-bottom:1px solid var(--line)}
+.log-h strong{font-family:var(--display);font-weight:600;font-size:14px}
+.log-h span{font-family:var(--mono);font-size:11px;color:var(--muted)}
+.log ol{list-style:none;margin:0;padding:8px 0;overflow-y:auto;flex:1;min-height:240px;font-family:var(--mono);font-size:12px;line-height:1.45}
+.log li{display:grid;grid-template-columns:62px minmax(0,1fr);gap:8px;padding:6px 14px;border-left:3px solid transparent}
+.log li.new{animation:slide .35s ease-out}
+.log li time{color:var(--muted);font-variant-numeric:tabular-nums}
+.log li .who{display:block;font-weight:500}
+.log li .what{color:var(--ink);word-break:break-word}
+.log li.threat{border-left-color:var(--threat)} .log li.threat .who{color:var(--threat)}
+.log li.defend{border-left-color:var(--defend)} .log li.defend .who{color:var(--defend)}
+.log li.xdr{border-left-color:var(--ok)} .log li.xdr .who{color:var(--ok)}
+.log .empty{color:var(--muted);padding:6px 14px;display:block}
+
+/* XDR row */
+section h2{font-family:var(--display);font-weight:600;font-size:18px;margin:0 0 10px}
+.caps{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px}
+.cap{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px;display:flex;flex-direction:column;gap:6px;transition:all .35s;min-width:0}
+.cap .ico{width:36px;height:36px}
+.cap .ico svg{width:20px;height:20px}
+.cap b{font-family:var(--display);font-weight:600;font-size:14.5px}
+.cap p{margin:0;font-size:12.5px;color:var(--muted);line-height:1.4}
+.cap[data-state="on"]{border-color:var(--ok)}
+.cap[data-state="on"] .ico{background:var(--ok-soft);color:var(--ok)}
+.cap[data-state="active"]{border-color:var(--ok);background:var(--ok-soft);transform:translateY(-3px)}
+.cap[data-state="active"] .ico{background:var(--surface);color:var(--ok);animation:pop .5s ease-out}
+
+.prods{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.prod{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-radius:8px;border:1px solid var(--line);background:var(--surface);transition:all .35s;min-width:0}
+.prod .dot{width:9px;height:9px;border-radius:50%;background:var(--line);margin-top:6px;flex:none;transition:all .35s}
+.prod b{display:block;font-size:13px;font-weight:600}
+.prod span{display:block;font-size:12px;color:var(--muted);line-height:1.35}
+.prod[data-state="on"] .dot{background:var(--defend)}
+.prod[data-state="active"]{border-color:var(--defend);background:var(--defend-soft)}
+.prod[data-state="active"] .dot{background:var(--defend);box-shadow:0 0 0 4px var(--defend-soft),0 0 0 6px var(--defend)}
+
+.foot{font-size:12px;color:var(--muted);font-family:var(--mono);display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px 24px;border-top:1px solid var(--line);padding-top:14px;margin:0}
+.foot .credit{color:var(--ink)}
+.byline{margin:10px 0 0;font-size:13px;color:var(--muted)}
+.byline b{color:var(--ink);font-weight:600}
+
+@media (max-width:1100px){.caps{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media (max-width:1000px){.main{grid-template-columns:minmax(0,1fr)}.log{max-height:340px}}
+@media (max-width:780px){.stages{grid-template-columns:repeat(2,minmax(0,1fr))}.prods{grid-template-columns:repeat(2,minmax(0,1fr))}.seg span{display:none}}
+@media (max-width:480px){.stages,.prods{grid-template-columns:minmax(0,1fr)}.caps{grid-template-columns:repeat(2,minmax(0,1fr))}.now{grid-template-columns:minmax(0,1fr)}.now .badge{display:none}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+
+<div class="wrap">
+  <header>
+    <div>
+      <div class="eyebrow">Microsoft Defender XDR</div>
+      <h1>Defend across the attack chain</h1>
+      <p class="sub">Follow one simulated phishing intrusion from first email to data theft, and watch each Defender sensor raise its signal before XDR correlates them into a single incident.</p>
+      <p class="byline">Created by <b>Denise Banks</b></p>
+    </div>
+    <div class="controls" role="group" aria-label="Playback">
+      <button class="btn" id="restart" aria-label="Restart"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg></button>
+      <button class="btn" id="prev" aria-label="Previous step"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
+      <button class="btn primary" id="play"><svg id="playIco" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4l13 8-13 8z"/></svg><span id="playLbl">Play</span></button>
+      <button class="btn" id="next" aria-label="Next step"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></button>
+      <button class="btn" id="speed" aria-label="Playback speed"><span class="speed" id="speedLbl">1×</span></button>
+      <button class="btn" id="sound" aria-pressed="true" aria-label="Sound effects"><svg id="soundIco" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></svg></button>
+    </div>
+  </header>
+
+  <div class="rail" id="rail" aria-hidden="true"></div>
+
+  <div class="now" id="now" aria-live="polite">
+    <div class="badge" id="nowBadge">1</div>
+    <div>
+      <div class="k" id="nowK">Stage 1 · Initial access</div>
+      <div class="t" id="nowT">Threat actor</div>
+      <p class="d" id="nowD">Press Play to run the attack chain, or use the arrows to step through it.</p>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="stages" id="stages"></div>
+    <aside class="log" aria-label="Incident timeline">
+      <div class="log-h"><strong>Incident timeline</strong><span>simulated · #4127</span></div>
+      <ol id="log"></ol>
+    </aside>
+  </div>
+
+  <section>
+    <h2>Defender XDR · unified visibility and response</h2>
+    <div class="caps" id="caps"></div>
+  </section>
+
+  <section>
+    <h2>Products feeding the incident</h2>
+    <div class="prods" id="prods"></div>
+  </section>
+
+  <footer class="foot"><span>Hosts, IPs and timestamps are illustrative. Technique IDs follow MITRE ATT&amp;CK. Shortcuts: Space play/pause, ← → step. Sound starts after your first click.</span><span class="credit">© 2026 Denise Banks</span></footer>
+</div>
+
+<script>
+const I = {
+  actor:'<path d="M12 3a5 5 0 0 0-5 5v2a5 5 0 0 0 10 0V8a5 5 0 0 0-5-5z"/><path d="M4 21c1-4 4-6 8-6s7 2 8 6"/><path d="M10 9h.01M14 9h.01"/>',
+  mail:'<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>',
+  install:'<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M12 7v6m-3-3l3 3 3-3"/><path d="M8 20h8"/>',
+  term:'<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 10l3 2-3 2M12 15h5"/>',
+  c2:'<path d="M12 12l-4 9M12 12l4 9M9.5 17h5"/><circle cx="12" cy="10" r="1.6"/><path d="M8.5 6.5a5 5 0 0 0 0 7M15.5 6.5a5 5 0 0 1 0 7M6 4a8.5 8.5 0 0 0 0 12M18 4a8.5 8.5 0 0 1 0 12"/>',
+  ident:'<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.5 3.3-5.5 6.5-5.5s5.7 2 6.5 5.5"/><path d="M15 9h6M18 6v6"/>',
+  lateral:'<rect x="2" y="4" width="8" height="6" rx="1"/><rect x="14" y="14" width="8" height="6" rx="1"/><path d="M6 10v4a3 3 0 0 0 3 3h5M18 14v-4a3 3 0 0 0-3-3h-5"/>',
+  exfil:'<path d="M7 18a5 5 0 1 1 1-9.9A6 6 0 0 1 19.5 10 4 4 0 0 1 18 18"/><path d="M12 21v-8m-3 3l3-3 3 3"/>',
+  analyze:'<path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/>',
+  detect:'<circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.3-4.3"/>',
+  invest:'<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 3h6v3H9zM8.5 11h7M8.5 15h5"/>',
+  respond:'<path d="M12 2l8 3v6c0 5-3.5 9-8 11-4.5-2-8-6-8-11V5z"/><path d="M13 7l-3 5h4l-3 5"/>',
+  hunt:'<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/>',
+  report:'<path d="M4 20V4M4 20h16"/><path d="M8 16v-4M12 16V8M16 16v-6"/>',
+  shield:'<path d="M12 2l8 3v6c0 5-3.5 9-8 11-4.5-2-8-6-8-11V5z"/>'
+};
+const svg = (k,fillNone=true)=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${I[k]}</svg>`;
+
+const P = {
+  o365:{n:'Defender for Office 365', d:'Email, link and attachment protection'},
+  mde:{n:'Defender for Endpoint', d:'Stops malware and exploits, isolates devices'},
+  mdi:{n:'Defender for Identity', d:'Credential misuse and lateral movement'},
+  entra:{n:'Entra ID Protection', d:'Risky sign-ins and token abuse'},
+  mdca:{n:'Defender for Cloud Apps', d:'SaaS usage, data loss, risky apps'},
+  purview:{n:'Microsoft Purview', d:'Data governance, DLP, insider risk'},
+  sentinel:{n:'Microsoft Sentinel', d:'SIEM, SOAR, threat hunting'},
+  intune:{n:'Microsoft Intune', d:'Device management and compliance'}
+};
+
+const S = [
+  {t:'Threat actor', tac:'Initial access', ico:'actor', d:'An attacker uses social engineering or phishing to get a foothold.',
+   atk:'Spoofed invoice email sent to finance mailbox · T1566.001', sen:['o365'],
+   det:'Anti-phishing flags sender impersonation; domain registered 3 days ago'},
+  {t:'Phishing mail', tac:'Execution', ico:'mail', d:'The user clicks the malicious link or opens the attachment.',
+   atk:'User opens Invoice_Q3.docm and enables macros · T1204.002', sen:['o365'],
+   det:'Safe Attachments detonation finds a macro dropper; alert raised'},
+  {t:'Installation', tac:'Persistence', ico:'install', d:'The payload installs and persists with registry keys or scheduled tasks.',
+   atk:'Run key written under HKCU\\…\\Run\\updater · T1547.001', sen:['mde'],
+   det:'Unauthorized autostart change blocked; process tree captured'},
+  {t:'Exploitation', tac:'Privilege escalation', ico:'term', d:'The attacker exploits a vulnerability or stolen credentials for more access.',
+   atk:'Local privilege escalation via vulnerable driver · T1068', sen:['mde'],
+   det:'Exploit behavior detected; FIN-LT-042 marked high risk'},
+  {t:'Command and control', tac:'Command & control', ico:'c2', d:'The device beacons to an attacker server for instructions.',
+   atk:'HTTPS beacon every 60s to 185.220.x.x · T1071.001', sen:['mde'],
+   det:'Beaconing to known C2 infrastructure; network protection alert'},
+  {t:'Compromised identity', tac:'Credential access', ico:'ident', d:'The attacker steals credentials or abuses a legitimate identity.',
+   atk:'LSASS memory read, token replayed from new location · T1003.001', sen:['mdi','entra'],
+   det:'Anomalous token and credential misuse flagged for j.ortiz'},
+  {t:'Lateral movement', tac:'Lateral movement', ico:'lateral', d:'The attacker moves to other systems and data with the stolen identity.',
+   atk:'SMB remote service to FILE-SRV-02 with stolen account · T1021.002', sen:['mdi'],
+   det:'Suspected lateral movement path toward a tier-0 asset'},
+  {t:'Data exfiltration', tac:'Exfiltration', ico:'exfil', d:'Sensitive data is sent to an external cloud or server.',
+   atk:'2.3 GB uploaded to personal cloud storage · T1567.002', sen:['mdca','purview'],
+   det:'Mass upload to unsanctioned app matches DLP policy'}
+];
+
+const C = [
+  {t:'Analyze', ico:'analyze', d:'Correlates signals across email, endpoint, identity and cloud.', log:'8 alerts from 6 products correlated into Incident #4127', prod:['sentinel']},
+  {t:'Detect', ico:'detect', d:'AI and machine learning recognize the multi-stage attack.', log:'Multi-stage attack confirmed · severity High'},
+  {t:'Investigate', ico:'invest', d:'Full context, timeline and related alerts in one view.', log:'Incident graph: 1 user, 2 devices, 1 mailbox, 1 cloud app'},
+  {t:'Respond', ico:'respond', d:'Automates containment and remediation.', log:'Device isolated · account disabled · sessions revoked · emails purged', prod:['intune']},
+  {t:'Hunt', ico:'hunt', d:'Finds related threats before they trigger an alert.', log:'KQL hunt finds the same sender in 3 more mailboxes; purged'},
+  {t:'Report', ico:'report', d:'Supports compliance, trend tracking and risk reduction.', log:'Incident resolved; post-incident report ready for review'}
+];
+
+// Timeline of steps
+const STEPS = [];
+S.forEach((s,i)=>{STEPS.push({k:'atk',s:i,dur:2600});STEPS.push({k:'det',s:i,dur:2600});});
+C.forEach((c,i)=>STEPS.push({k:'xdr',c:i,dur:1700}));
+STEPS.push({k:'end',dur:7000});
+const NS = S.length*2;
+
+// timestamps
+const base = 9*3600+41*60+2;
+const offs = STEPS.map((st,i)=>{
+  if(st.k==='atk') return st.s*412 + (st.s*37)%60;
+  if(st.k==='det') return st.s*412 + (st.s*37)%60 + 9 + st.s;
+  if(st.k==='xdr') return 7*412 + 30 + 45*(st.c+1);
+  return 7*412 + 30 + 45*7;
+});
+const fmt = s=>{s+=base;const h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=s%60;return [h,m,x].map(v=>String(v).padStart(2,'0')).join(':')};
+
+// Build DOM
+const $ = id=>document.getElementById(id);
+$('rail').innerHTML = S.map((s,i)=>`<div class="seg" data-i="${i}"><div class="bar"></div><span>${i+1} ${s.tac}</span></div>`).join('');
+$('stages').innerHTML = S.map((s,i)=>`
+  <article class="stage" data-i="${i}" tabindex="0" aria-label="Stage ${i+1}: ${s.t}">
+    <div class="top"><div class="ico">${svg(s.ico)}</div><span class="pill">Waiting</span></div>
+    <div><div class="num">${String(i+1).padStart(2,'0')}</div><h3>${s.t}</h3><div class="tactic">${s.tac}</div></div>
+    <p>${s.d}</p>
+    <div class="sensors">${s.sen.map(p=>`<span class="chip">${svg('shield')}${P[p].n}</span>`).join('')}</div>
+  </article>`).join('');
+$('caps').innerHTML = C.map(c=>`<div class="cap"><div class="ico">${svg(c.ico)}</div><b>${c.t}</b><p>${c.d}</p></div>`).join('');
+$('prods').innerHTML = Object.entries(P).map(([k,p])=>`<div class="prod" data-p="${k}"><i class="dot"></i><div><b>${p.n}</b><span>${p.d}</span></div></div>`).join('');
+
+const cards=[...document.querySelectorAll('.stage')], segs=[...document.querySelectorAll('.seg')],
+      caps=[...document.querySelectorAll('.cap')], prods=[...document.querySelectorAll('.prod')];
+
+function stageState(i,idx){const a=i*2,d=a+1; if(idx===a) return 'attack'; if(idx===d) return 'detect'; if(idx>d) return 'done'; return 'idle';}
+
+function logEntry(st){
+  if(st.k==='atk') return {c:'threat',who:'Attacker',what:S[st.s].atk};
+  if(st.k==='det') return {c:'defend',who:S[st.s].sen.map(p=>P[p].n).join(' + '),what:S[st.s].det};
+  if(st.k==='xdr') return {c:'xdr',who:'Defender XDR · '+C[st.c].t,what:C[st.c].log};
+  return {c:'xdr',who:'SOC',what:'Incident #4127 contained and closed'};
+}
+
+let idx=-1, playing=false, timer=null, speed=1;
+
+function render(){
+  cards.forEach((el,i)=>{const s=stageState(i,idx); el.dataset.state=s;
+    el.querySelector('.pill').textContent = s==='attack'?'Under attack':s==='detect'?'Detected':s==='done'?'Alert raised':'Waiting';});
+  segs.forEach((el,i)=>el.dataset.state=stageState(i,idx));
+  caps.forEach((el,i)=>{const j=NS+i; el.dataset.state = idx===j?'active':idx>j?'on':'';});
+
+  const lit=new Set(), act=new Set();
+  STEPS.forEach((st,j)=>{ if(j>idx) return;
+    const ps = st.k==='det'?S[st.s].sen : st.k==='xdr'?(C[st.c].prod||[]) : [];
+    ps.forEach(p=>{lit.add(p); if(j===idx) act.add(p);}); });
+  prods.forEach(el=>{const p=el.dataset.p; el.dataset.state = act.has(p)?'active':lit.has(p)?'on':'';});
+
+  // narration
+  const now=$('now'), st=STEPS[idx];
+  if(!st){ now.dataset.tone=''; $('nowBadge').textContent='1'; $('nowK').textContent='Ready'; $('nowT').textContent='Simulated phishing intrusion';
+    $('nowD').innerHTML='Press <b>Play</b> to run the attack chain, or use the arrows to step through it.'; }
+  else if(st.k==='atk'||st.k==='det'){ const s=S[st.s];
+    now.dataset.tone = st.k==='atk'?'threat':'defend'; $('nowBadge').textContent=st.s+1;
+    $('nowK').textContent=`Stage ${st.s+1} of 8 · ${s.tac}`; $('nowT').textContent=s.t;
+    $('nowD').innerHTML = st.k==='atk' ? `<b>Attacker:</b> ${s.atk}` : `<b>${s.sen.map(p=>P[p].n).join(' + ')}:</b> ${s.det}`; }
+  else if(st.k==='xdr'){ const c=C[st.c]; now.dataset.tone='ok'; $('nowBadge').innerHTML=svg(c.ico);
+    $('nowK').textContent=`Defender XDR · ${st.c+1} of 6`; $('nowT').textContent=c.t; $('nowD').innerHTML=`<b>${c.d}</b> ${c.log}.`; }
+  else { now.dataset.tone='ok'; $('nowBadge').innerHTML=svg('shield');
+    $('nowK').textContent='Outcome'; $('nowT').textContent='One incident, contained';
+    $('nowD').innerHTML='<b>8 attack stages, 8 products, 1 correlated incident.</b> Separate alerts became one story the SOC could act on before the data loss spread.'; }
+
+  // log
+  const ol=$('log');
+  if(idx<0){ ol.innerHTML='<li class="empty" style="display:block">Waiting for the first signal…</li>'; }
+  else { ol.innerHTML = STEPS.slice(0,idx+1).map((s,j)=>{const e=logEntry(s);
+      return `<li class="${e.c}${j===idx?' new':''}"><time>${fmt(offs[j])}</time><div><span class="who">${e.who}</span><span class="what">${e.what}</span></div></li>`}).join('');
+    ol.scrollTop = ol.scrollHeight; }
+}
+
+// 8-bit sound effects (Web Audio, no files). Browsers allow audio only after the viewer clicks or presses a key.
+let actx=null, soundOn=true;
+const ICO_ON='<path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/>';
+const ICO_OFF='<path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M17 9l5 6M22 9l-5 6"/>';
+function unlockAudio(){ try{ if(!actx){ const AC=window.AudioContext||window.webkitAudioContext; if(AC) actx=new AC(); } if(actx&&actx.state==='suspended') actx.resume(); }catch(e){} }
+function tone(freq,start,len,type='square',vol=.07,slideTo){
+  const t=actx.currentTime+start, o=actx.createOscillator(), g=actx.createGain();
+  o.type=type; o.frequency.setValueAtTime(freq,t); if(slideTo) o.frequency.exponentialRampToValueAtTime(slideTo,t+len);
+  g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(vol,t+.008); g.gain.exponentialRampToValueAtTime(0.0001,t+len);
+  o.connect(g).connect(actx.destination); o.start(t); o.stop(t+len+.02);
+}
+const SFX={
+  atk(){ tone(880,0,.09,'square',.06); tone(440,.1,.09,'square',.06); tone(220,.2,.16,'sawtooth',.05,110); },      // alarm: falling hit
+  det(){ [1047,1319,1568,2093].forEach((f,i)=>tone(f,i*.055,.09,'triangle',.11)); },                               // power-up: rising arpeggio
+  xdr(){ tone(988,0,.07,'square',.05); tone(1319,.07,.22,'square',.05); },                                             // coin
+  end(){ [523,659,784,1047].forEach((f,i)=>tone(f,i*.11,.12,'square',.05)); tone(1047,.46,.5,'triangle',.1); tone(1568,.46,.5,'triangle',.05); } // level clear
+};
+function sfx(st){ if(!soundOn||!actx||actx.state!=='running'||!st) return; try{ SFX[st.k]&&SFX[st.k](); }catch(e){} }
+function drawSound(){ $('soundIco').innerHTML=soundOn?ICO_ON:ICO_OFF; $('sound').setAttribute('aria-pressed',soundOn); $('sound').title=soundOn?'Mute sound effects':'Turn on sound effects'; }
+$('sound').onclick=()=>{ soundOn=!soundOn; unlockAudio(); drawSound(); };
+['pointerdown','keydown'].forEach(ev=>document.addEventListener(ev,unlockAudio,{passive:true}));
+drawSound();
+
+function go(n){ const prev=idx; idx = Math.max(-1, Math.min(STEPS.length-1, n)); render(); if(idx!==prev) sfx(STEPS[idx]); }
+function tick(){ clearTimeout(timer); if(!playing) return;
+  const dur = idx<0?600:STEPS[idx].dur;
+  timer=setTimeout(()=>{ go(idx>=STEPS.length-1?0:idx+1); tick(); }, dur/speed); }
+function setPlay(p){ playing=p;
+  $('playLbl').textContent = p?'Pause':'Play';
+  $('playIco').innerHTML = p?'<path d="M6 4h4v16H6zM14 4h4v16h-4z"/>':'<path d="M7 4l13 8-13 8z"/>';
+  tick(); }
+
+$('play').onclick=()=>{ if(!playing && idx>=STEPS.length-1) go(-1); setPlay(!playing); };
+$('next').onclick=()=>{ go(idx+1); tick(); };
+$('prev').onclick=()=>{ go(idx-1); tick(); };
+$('restart').onclick=()=>{ go(0); tick(); };
+$('speed').onclick=()=>{ speed = speed===1?2:speed===2?0.5:1; $('speedLbl').textContent=(speed===0.5?'½':speed)+'×'; tick(); };
+cards.forEach((el,i)=>{ const jump=()=>{go(i*2); tick();}; el.onclick=jump; el.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();jump();}}; });
+segs.forEach((el,i)=>el.onclick=()=>{go(i*2); tick();});
+document.addEventListener('keydown',e=>{
+  if(e.target.closest && e.target.closest('button')) { if(e.key===' ') return; }
+  if(e.key===' '){e.preventDefault(); $('play').click();}
+  else if(e.key==='ArrowRight') $('next').click();
+  else if(e.key==='ArrowLeft') $('prev').click();
+});
+
+render();
+const reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+if(!reduce) setTimeout(()=>setPlay(true), 800);
+</script>
+
+</body></html>
